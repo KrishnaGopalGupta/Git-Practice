@@ -1,0 +1,83 @@
+ Docker registry
+
+#Run a container with docker registry image
+ docker container run -d -p 5000:5000 --name local_registry registry
+# download some docker images from docker hub 
+ docker pull ubuntu
+ docker pull redis
+# Tag these images with localhost:500 or 127.0.0.1:5000 prefix because by default docker registry accept images with this naming convention
+ docker image tag redis 127.0.0.1:5000/redis
+ docker image tag ubuntu localhost:5000/ubuntu
+ 
+ #To push the images to docker registry
+ docker push 127.0.0.1:5000/redis
+ docker push localhost:5000/ubuntu
+ 
+ #Remove the images from local system and pull it from docker registry
+  
+ docker rmi ubuntu redis localhost:5000/ubuntu 127.0.0.1:5000/redis
+ 
+ # Verify the images has been removed.if not then delete it again
+   docker image ls
+
+ #Pull the images from docker registry. 
+   docker pull localhost:5000/ubuntu
+   docker pull 127.0.0.1:5000/redis
+ 
+ # Verify images has been downloaded
+    docker image ls
+ # Note:- Docker Regsitry only accept secure repiostry but localhost or 127.0.0.0/8 CIDR range is exception.
+ 
+ # To push image with IP address other than local host
+ # Consider 172.31.21.108 is the IP address of docker host machine
+ # Let's Tag an image with 172.31.21.108:5000
+   docker pull nginx
+   docker image tag nginx 172.31.21.108:5000/nginx
+ #  Below command will throw the error because my repiostry is not secure 
+    docker push 172.31.21.108:5000/nginx
+ # Error:-> Get https://172.31.21.108:5000/v2/: http: server gave HTTP response to HTTPS client
+ 
+ #If you want to push the insecure repoistry then create a file /etc/docker/daemon.json and enter below lines and save the file(Please change IP as per your docker host system ip
+ 
+  {
+     "insecure-registries": ["172.31.21.108:5000"]
+  }
+
+ # Restart Docker daemon
+   systemctl restart docker
+ # Start docker registry container
+    docker start local_registry 
+ # push nginx repiostry , it should be pushed to docker registry without any error
+   docker push 172.31.21.108:5000/nginx
+   
+# How to create secure Regsitry
+# first remove daemon.json file
+ rm /etc/docker/daemon.json
+#Restart docker service
+ systemctl restart docker
+# create a directory to keep the certificates
+  mkdir /certs 
+# Create a directory certs in /etc/docker directory
+  mkdir /etc/docker/certs.d
+# Create a directory for images
+  mkdir /my_repo  
+# create a self signed certificate with openssl utility.
+  openssl req  -newkey rsa:4096 -nodes -sha256 -keyout /certs/domain.key -x509 -days 365 -out /certs/domain.crt
+# it asks some questions but I am giving Common Name as repo.docker.kmit ( you can give any name)
+# create a directory with   repo.docker.kmit:5000 under /etc/docker/certs.d directory
+  mkdir -p /etc/docker/certs.d/repo.docker.kmit:5000
+# copy /certs/domain.crt file to  /etc/docker/certs.d/repo.docker.kmit:5000 with name ca.crt
+  cp domain.crt /etc/docker/certs.d/repo.docker.kmit\:5000/ca.crt
+# run a secure registry
+docker run -d -p 5000:5000 -v /my_repo:/var/lib/registry -v /certs:/certs -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key --restart on-failure --name myregistry registry
+# resolve repo.docker.kmit name by adding entry in /etc/hosts file (172.31.21.108 is docker host ip)
+   172.31.21.108 repo.docker.kmit
+# Download any image and tag it as repo.docker.kmit:5000 for example repo.docker.kmit:5000/mysql and push it to docker registry
+  docker push repo.docker.kmit:5000/mysql
+# Login to other system which is on same network and docker is installed on it.
+# we will pull docker image from docker registry
+# First We will copy valid certificate domain.crt file from docker host to this docker machine (Please watch attach video to see how to copy the file) and keep it at /etc/docker/certs.d/repo.docker.kmit\:5000/
+   mkdir -p /etc/docker/certs.d/repo.docker.kmit:5000
+#  pull docker image from docker registry and it will be sucessfull
+   docker pull repo.docker.kmit:5000/mysql
+   
